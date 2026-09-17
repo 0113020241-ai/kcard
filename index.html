@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>법카 한도</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="법카 한도">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card: #ffffff;
+    --text: #000000;
+    --sub: #6e6e73;
+    --line: #e5e5ea;
+    --blue: #007aff;
+    --green: #34c759;
+    --orange: #ff9500;
+    --red: #ff3b30;
+    --track: #e5e5ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --card: #1c1c1e;
+      --text: #ffffff;
+      --sub: #98989f;
+      --line: #38383a;
+      --blue: #0a84ff;
+      --green: #30d158;
+      --orange: #ff9f0a;
+      --red: #ff453a;
+      --track: #3a3a3c;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px);
+    max-width: 480px;
+    margin: 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .month { text-align: center; font-size: 17px; font-weight: 600; color: var(--sub); margin: 4px 0 14px; }
+  .card { background: var(--card); border-radius: 20px; padding: 22px 20px; }
+  .label { font-size: 15px; color: var(--sub); }
+  .big { font-size: 44px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; line-height: 1.15; }
+  .used { font-size: 26px; font-weight: 700; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px; }
+  .bar { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; margin-top: 16px; }
+  .fill { height: 100%; width: 0; border-radius: 5px; background: var(--green); transition: width .3s, background .3s; }
+  .hint { font-size: 13px; color: var(--sub); margin-top: 10px; }
+
+  form { margin-top: 16px; display: flex; gap: 10px; }
+  .amount {
+    flex: 1; min-width: 0; display: flex; align-items: center;
+    background: var(--card); border-radius: 14px; padding: 0 16px;
+  }
+  .amount input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 24px; font-weight: 600; padding: 14px 0; text-align: right;
+  }
+  .amount span { font-size: 20px; color: var(--sub); margin-left: 6px; }
+  button.add {
+    border: 0; border-radius: 14px; background: var(--blue); color: #fff;
+    font: inherit; font-size: 18px; font-weight: 600; padding: 0 22px;
+  }
+  button.add:disabled { opacity: .4; }
+
+  h2 { font-size: 13px; font-weight: 400; color: var(--sub); margin: 28px 4px 8px; }
+  ul { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: 14px; overflow: hidden; }
+  li { display: flex; align-items: center; padding: 12px 8px 12px 16px; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li .when { color: var(--sub); font-size: 15px; flex: 1; }
+  li .won { font-size: 17px; font-weight: 600; }
+  li button {
+    border: 0; background: transparent; color: var(--sub); font-size: 20px;
+    width: 40px; height: 32px; margin-left: 4px;
+  }
+  .empty { padding: 18px 16px; color: var(--sub); font-size: 15px; text-align: center; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px);
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: rgba(40,40,40,.95); color: #fff; border-radius: 12px;
+    padding: 10px 8px 10px 16px; display: flex; align-items: center; gap: 8px;
+    font-size: 15px; white-space: nowrap; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .toast button { border: 0; background: transparent; color: #64d2ff; font: inherit; font-weight: 600; padding: 4px 8px; }
+</style>
+</head>
+<body>
+  <div class="month" id="month"></div>
+
+  <div class="card">
+    <div class="label" id="remainLabel">남은 금액</div>
+    <div class="big" id="remain">0원</div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="row">
+      <div>
+        <div class="label">사용 합계</div>
+        <div class="used" id="used">0원</div>
+      </div>
+      <div class="label" id="limit"></div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <form id="form" autocomplete="off">
+    <label class="amount">
+      <input id="input" inputmode="numeric" placeholder="사용 금액" aria-label="사용 금액">
+      <span>원</span>
+    </label>
+    <button class="add" id="addBtn" disabled>추가</button>
+  </form>
+
+  <h2 id="listTitle">이번 달 내역</h2>
+  <ul id="list"></ul>
+
+  <div class="toast" id="toast" role="status">
+    <span id="toastText"></span>
+    <button id="undoBtn" type="button">취소</button>
+  </div>
+
+<script>
+  const LIMIT = 1000000;          // 월 한도 (원)
+  const KEY = "corpcard.entries";  // [{t: 사용시각(ms), a: 금액}]
+
+  const $ = (id) => document.getElementById(id);
+  const won = (n) => n.toLocaleString("ko-KR") + "원";
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  }
+  function save(entries) {
+    try { localStorage.setItem(KEY, JSON.stringify(entries)); } catch {}
+  }
+
+  let entries = load();
+  let lastAdded = null;
+  let toastTimer = null;
+
+  function thisMonth(now = new Date()) {
+    return entries
+      .filter((e) => {
+        const d = new Date(e.t);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      })
+      .sort((a, b) => b.t - a.t);
+  }
+
+  function render() {
+    const now = new Date();
+    const items = thisMonth(now);
+    const used = items.reduce((s, e) => s + e.a, 0);
+    const remain = LIMIT - used;
+    const ratio = used / LIMIT;
+
+    $("month").textContent = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
+    $("used").textContent = won(used);
+    $("limit").textContent = "한도 " + won(LIMIT);
+    $("remainLabel").textContent = remain >= 0 ? "남은 금액" : "한도 초과";
+    $("remain").textContent = won(Math.abs(remain));
+
+    const color = ratio < 0.7 ? "var(--green)" : ratio < 0.9 ? "var(--orange)" : "var(--red)";
+    $("remain").style.color = remain >= 0 ? color : "var(--red)";
+    $("fill").style.width = Math.min(ratio, 1) * 100 + "%";
+    $("fill").style.background = color;
+
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysLeft = lastDay - now.getDate() + 1;
+    $("hint").textContent = remain > 0
+      ? `말일까지 ${daysLeft}일 · 하루 평균 ${won(Math.floor(remain / daysLeft))}`
+      : remain === 0 ? "한도를 모두 사용했어요" : "";
+
+    $("listTitle").textContent = items.length ? `이번 달 내역 ${items.length}건` : "이번 달 내역";
+    const list = $("list");
+    list.replaceChildren();
+    if (!items.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "아직 사용 내역이 없어요";
+      list.append(li);
+    }
+    for (const e of items) {
+      const d = new Date(e.t);
+      const li = document.createElement("li");
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const amt = document.createElement("span");
+      amt.className = "won";
+      amt.textContent = won(e.a);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.textContent = "×";
+      del.setAttribute("aria-label", `${won(e.a)} 삭제`);
+      del.onclick = () => {
+        if (!confirm(`${when.textContent} ${won(e.a)} 내역을 삭제할까요?`)) return;
+        entries = entries.filter((x) => x !== e);
+        save(entries);
+        render();
+      };
+      li.append(when, amt, del);
+      list.append(li);
+    }
+  }
+
+  function showToast(text) {
+    $("toastText").textContent = text;
+    $("toast").classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $("toast").classList.remove("show"), 4000);
+  }
+
+  const input = $("input");
+  input.addEventListener("input", () => {
+    const digits = input.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9);
+    input.value = digits ? Number(digits).toLocaleString("ko-KR") : "";
+    $("addBtn").disabled = !digits;
+  });
+
+  $("form").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const amount = Number(input.value.replace(/\D/g, ""));
+    if (!amount) return;
+    lastAdded = { t: Date.now(), a: amount };
+    entries.push(lastAdded);
+    save(entries);
+    input.value = "";
+    $("addBtn").disabled = true;
+    input.blur();
+    render();
+    showToast(`${won(amount)} 추가됨`);
+  });
+
+  $("undoBtn").addEventListener("click", () => {
+    if (lastAdded) {
+      entries = entries.filter((x) => x !== lastAdded);
+      lastAdded = null;
+      save(entries);
+      render();
+    }
+    $("toast").classList.remove("show");
+  });
+
+  // 앱을 켜둔 채로 달이 바뀌거나, 다시 열었을 때 화면 갱신
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+
+  render();
+
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
