@@ -81,7 +81,9 @@
 
   .card { background: var(--card); border-radius: 20px; padding: 22px 20px; }
   .label { font-size: 15px; color: var(--sub); }
-  .big { font-size: 44px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; line-height: 1.15; }
+  .bigrow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-top: 2px; }
+  .big { font-size: 44px; font-weight: 700; letter-spacing: -1px; line-height: 1.15; }
+  .daysleft { font-size: 14px; color: var(--sub); white-space: nowrap; }
   .used { font-size: 26px; font-weight: 700; }
   .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px; }
   .bar { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; margin-top: 16px; }
@@ -219,7 +221,10 @@
 
   <div class="card">
     <div class="label" id="remainLabel">남은 금액</div>
-    <div class="big" id="remain">0원</div>
+    <div class="bigrow">
+      <span class="big" id="remain">0원</span>
+      <span class="daysleft" id="daysLeft"></span>
+    </div>
     <div class="bar"><div class="fill" id="fill"></div></div>
     <div class="row">
       <div>
@@ -295,10 +300,16 @@
           <input id="nameInput" placeholder="예: 법인카드" maxlength="20">
         </div>
         <div class="field">
-          <label for="limitInput">월 한도</label>
+          <label for="limitInput">한도</label>
           <input id="limitInput" inputmode="numeric" placeholder="1,000,000">
           <span class="unit">원</span>
         </div>
+        <div class="field">
+          <label for="startInput">시작일</label>
+          <input id="startInput" inputmode="numeric" placeholder="1" maxlength="2">
+          <span class="unit">일</span>
+        </div>
+        <p class="note" id="periodNote"></p>
         <button class="save" id="saveBtn" type="submit">저장</button>
       </form>
       <button class="del" type="button" id="delBtn">이 카드 삭제</button>
@@ -308,6 +319,7 @@
 
 <script>
   const MAX_CARDS = 5;                    // 카드는 최대 5장
+  const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
   const KEEP_MONTHS = 3;                  // 자동 삭제까지 보관할 개월 수
   const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
   const CARDS_KEY = "corpcard.cards";     // [{id, name, limit}]
@@ -346,6 +358,12 @@
     try { localStorage.setItem(SEL_KEY, selected); } catch {}
   }
 
+  // 예전 카드에는 집계 시작일이 없으니 1일로 채운다
+  if (cards.some((c) => !c.startDay)) {
+    cards = cards.map((c) => (c.startDay ? c : { ...c, startDay: 1 }));
+    write(CARDS_KEY, cards);
+  }
+
   // 오래된 기록 자동 삭제
   function purgeOld() {
     if (localStorage.getItem(PURGE_KEY) === "off") return;
@@ -365,15 +383,31 @@
   let toastTimer = null;
   let editingId = null; // null이면 새 카드
 
-  function monthEntries(now = new Date()) {
-    const card = currentCard();
+  // 카드의 집계 기간. 시작일이 1이면 1일~말일, 23이면 23일~다음 달 22일.
+  function periodOf(card, now = new Date()) {
+    const startDay = Math.min(Math.max(card.startDay || 1, 1), MAX_START_DAY);
+    let y = now.getFullYear();
+    let m = now.getMonth();
+    if (now.getDate() < startDay) m -= 1;          // 아직 이번 회차가 시작되기 전이면 지난 회차
+    const start = new Date(y, m, startDay);
+    const end = new Date(y, m + 1, startDay);       // 다음 회차 시작 = 이번 회차 끝(미포함)
+    return { start, end, startDay };
+  }
+
+  function periodEntries(card, now = new Date()) {
+    const { start, end } = periodOf(card, now);
     return entries
-      .filter((e) => {
-        if (e.c !== card.id) return false;
-        const d = new Date(e.t);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      })
+      .filter((e) => e.c === card.id && e.t >= start.getTime() && e.t < end.getTime())
       .sort((a, b) => b.t - a.t);
+  }
+
+  const md = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+
+  function periodLabel(card, now = new Date()) {
+    const { start, end, startDay } = periodOf(card, now);
+    if (startDay === 1) return `${start.getFullYear()}년 ${start.getMonth() + 1}월`;
+    const last = new Date(end.getTime() - 86400000);  // 마지막 날
+    return `${md(start)} ~ ${md(last)}`;
   }
 
   function renderPicker() {
@@ -391,12 +425,12 @@
   function render() {
     const now = new Date();
     const card = currentCard();
-    const items = monthEntries(now);
+    const items = periodEntries(card, now);
     const used = items.reduce((s, e) => s + e.a, 0);
     const remain = card.limit - used;
     const ratio = card.limit > 0 ? used / card.limit : 0;
 
-    $("month").textContent = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
+    $("month").textContent = periodLabel(card, now);
     $("used").textContent = won(used);
     $("limit").textContent = "한도 " + won(card.limit);
     $("remainLabel").textContent = remain >= 0 ? "남은 금액" : "한도 초과";
@@ -407,13 +441,17 @@
     $("fill").style.width = Math.min(ratio, 1) * 100 + "%";
     $("fill").style.background = color;
 
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysLeft = lastDay - now.getDate() + 1;
+    const { end, startDay } = periodOf(card, now);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysLeft = Math.max(Math.round((end - today) / 86400000), 1);
+    const lastDate = new Date(end.getTime() - 86400000);
+    $("daysLeft").textContent = daysLeft === 1 ? "오늘이 마지막 날" : `${daysLeft}일 남음`;
     $("hint").textContent = remain > 0
-      ? `말일까지 ${daysLeft}일 · 하루 평균 ${won(Math.floor(remain / daysLeft))}`
+      ? `${startDay === 1 ? "말일" : md(lastDate)}까지 · 하루 평균 ${won(Math.floor(remain / daysLeft))}`
       : remain === 0 ? "한도를 모두 사용했어요" : "";
 
-    $("listTitle").textContent = items.length ? `이번 달 내역 ${items.length}건` : "이번 달 내역";
+    const title = startDay === 1 ? "이번 달 내역" : "이번 기간 내역";
+    $("listTitle").textContent = items.length ? `${title} ${items.length}건` : title;
     const list = $("list");
     list.replaceChildren();
     if (!items.length) {
@@ -506,12 +544,7 @@
     const list = $("cardList");
     list.replaceChildren();
     for (const c of cards) {
-      const used = entries
-        .filter((e) => {
-          const d = new Date(e.t), now = new Date();
-          return e.c === c.id && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-        })
-        .reduce((s, e) => s + e.a, 0);
+      const used = periodEntries(c).reduce((s, e) => s + e.a, 0);
       const li = document.createElement("li");
       li.className = "cardrow";
       const btn = document.createElement("button");
@@ -524,7 +557,7 @@
       nm.textContent = c.name;
       const lm = document.createElement("div");
       lm.className = "lm";
-      lm.textContent = `한도 ${won(c.limit)} · 이번 달 ${won(used)}`;
+      lm.textContent = `한도 ${won(c.limit)} · ${periodLabel(c)} ${won(used)}`;
       info.append(nm, lm);
       const chev = document.createElement("span");
       chev.className = "chev";
@@ -551,30 +584,54 @@
     $("editTitle").textContent = card ? "카드 수정" : "카드 추가";
     $("nameInput").value = card ? card.name : "";
     $("limitInput").value = card ? card.limit.toLocaleString("ko-KR") : "";
+    $("startInput").value = card ? String(card.startDay || 1) : "1";
+    showPeriodNote();
     $("delBtn").style.display = card && cards.length > 1 ? "block" : "none";
     $("editNote").textContent = card
-      ? "한도를 바꿔도 이미 기록한 사용 내역은 그대로예요."
+      ? "한도나 시작일을 바꿔도 이미 기록한 내역은 지워지지 않아요."
       : "별명은 나중에 바꿀 수 있어요.";
     openSheet("editSheet");
     if (!card) $("nameInput").focus();
   }
 
+  // 시작일을 바꾸면 어떤 기간이 되는지 바로 보여준다
+  function showPeriodNote() {
+    const day = Number(digits($("startInput").value)) || 1;
+    if (day === 1) {
+      $("periodNote").textContent = "매월 1일부터 말일까지 합산해요.";
+      return;
+    }
+    const { start, end } = periodOf({ startDay: day });
+    const last = new Date(end.getTime() - 86400000);
+    $("periodNote").textContent =
+      `매월 ${day}일부터 다음 달 ${last.getDate()}일까지 합산해요. (이번 회차: ${md(start)} ~ ${md(last)})`;
+  }
+
   commaInput($("limitInput"));
+
+  $("startInput").addEventListener("input", (ev) => {
+    let d = digits(ev.target.value).slice(0, 2);
+    if (d && Number(d) > MAX_START_DAY) d = String(MAX_START_DAY);
+    ev.target.value = d;
+    showPeriodNote();
+  });
 
   $("editForm").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const name = $("nameInput").value.trim();
     const limit = Number(digits($("limitInput").value));
+    const startDay = Math.min(Math.max(Number(digits($("startInput").value)) || 1, 1), MAX_START_DAY);
     if (!name) { alert("카드 별명을 입력해 주세요."); return; }
-    if (!limit) { alert("월 한도를 입력해 주세요."); return; }
+    if (!limit) { alert("한도를 입력해 주세요."); return; }
 
     if (editingId) {
       const card = cards.find((c) => c.id === editingId);
       card.name = name;
       card.limit = limit;
+      card.startDay = startDay;
     } else {
       const id = "c" + Date.now();
-      cards.push({ id, name, limit });
+      cards.push({ id, name, limit, startDay });
       selected = id;
       try { localStorage.setItem(SEL_KEY, selected); } catch {}
     }

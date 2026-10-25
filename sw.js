@@ -1,5 +1,5 @@
 // 인터넷이 없어도 열리도록 파일을 캐시한다. 파일을 고치면 VERSION을 올릴 것.
-const VERSION = "v4";
+const VERSION = "v5";
 const FILES = ["./", "index.html", "manifest.json", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
