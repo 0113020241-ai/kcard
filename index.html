@@ -89,6 +89,10 @@
   .bar { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; margin-top: 16px; }
   .fill { height: 100%; width: 0; border-radius: 5px; background: var(--green); transition: width .3s, background .3s; }
   .hint { font-size: 13px; color: var(--sub); margin-top: 10px; }
+  .expiry { font-size: 13px; margin-top: 6px; color: var(--sub); }
+  .expiry.warn { color: var(--orange); font-weight: 600; }
+  .expiry.danger { color: var(--red); font-weight: 600; }
+  .field input[type="date"] { text-align: right; }
 
   form.add { margin-top: 16px; display: flex; gap: 10px; }
   .amount {
@@ -240,6 +244,7 @@
       <div class="label" id="limit"></div>
     </div>
     <div class="hint" id="hint"></div>
+    <div class="expiry" id="expiry"></div>
   </div>
 
   <button class="del" type="button" id="doneBtn" style="display:none">다 썼어요 · 이 카드 지우기</button>
@@ -317,6 +322,10 @@
           <label for="startInput">집계</label>
           <select id="startInput"></select>
         </div>
+        <div class="field">
+          <label for="expiryInput">만료일</label>
+          <input id="expiryInput" type="date">
+        </div>
         <p class="note" id="periodNote"></p>
         <button class="save" id="saveBtn" type="submit">저장</button>
       </form>
@@ -326,8 +335,8 @@
   </div>
 
 <script>
-  const MAX_CARDS = 5;                    // 카드는 최대 5장
-  const APP_VERSION = "v8";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
+  const MAX_CARDS = 20;                   // 카드 최대 장수
+  const APP_VERSION = "v9";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
   const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
   const KEEP_MONTHS = 2;                  // 자동 삭제까지 보관할 개월 수
   const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
@@ -374,6 +383,28 @@
   }
 
   const isPrepaid = (card) => card.startDay === 0;
+
+  // 만료일까지 며칠 남았나. 만료일이 없으면 null.
+  function daysToExpiry(card, now = new Date()) {
+    if (!card.expiry) return null;
+    const [y, m, d] = card.expiry.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    const due = new Date(y, m - 1, d);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((due - today) / 86400000);
+  }
+
+  function expiryText(card, now = new Date()) {
+    const left = daysToExpiry(card, now);
+    if (left === null) return null;
+    const [y, m, d] = card.expiry.split("-").map(Number);
+    const when = `${y}.${m}.${d}`;
+    if (left < 0) return { text: `${when} 만료됨`, cls: "danger" };
+    if (left === 0) return { text: `오늘 만료 (${when})`, cls: "danger" };
+    if (left <= 7) return { text: `만료 ${when} · D-${left}`, cls: "danger" };
+    if (left <= 30) return { text: `만료 ${when} · D-${left}`, cls: "warn" };
+    return { text: `만료 ${when} · D-${left}`, cls: "" };
+  }
 
   // 오래된 기록 자동 삭제
   function purgeOld() {
@@ -472,8 +503,15 @@
         : remain === 0 ? "한도를 모두 사용했어요" : "";
     }
 
-    // 다 쓴 선불카드는 정리할 수 있게 버튼을 띄운다
-    $("doneBtn").style.display = prepaid && remain <= 0 ? "block" : "none";
+    const exp = expiryText(card, now);
+    $("expiry").textContent = exp ? exp.text : "";
+    $("expiry").className = "expiry " + (exp ? exp.cls : "");
+
+    // 다 썼거나 만료된 선불카드는 정리할 수 있게 버튼을 띄운다
+    const expired = (daysToExpiry(card, now) ?? 1) < 0;
+    const spent = prepaid && remain <= 0;
+    $("doneBtn").style.display = (spent || (prepaid && expired)) ? "block" : "none";
+    $("doneBtn").textContent = expired ? "만료됐어요 · 이 카드 지우기" : "다 썼어요 · 이 카드 지우기";
 
     const title = prepaid ? "사용 내역" : card.startDay === 1 ? "이번 달 내역" : "이번 기간 내역";
     $("listTitle").textContent = items.length ? `${title} ${items.length}건` : title;
@@ -582,10 +620,20 @@
       nm.textContent = c.name;
       const lm = document.createElement("div");
       lm.className = "lm";
-      lm.textContent = isPrepaid(c)
+      const base = isPrepaid(c)
         ? `선불 · 충전 ${won(c.limit)} · 남은 ${won(c.limit - used)}`
         : `한도 ${won(c.limit)} · ${periodLabel(c)} ${won(used)}`;
-      info.append(nm, lm);
+      lm.textContent = base;
+      const e = expiryText(c);
+      if (e) {
+        const line = document.createElement("div");
+        line.textContent = e.text;
+        line.className = "expiry " + e.cls;   // 만료 줄만 색이 들어간다
+        line.style.marginTop = "2px";
+        info.append(nm, lm, line);
+      } else {
+        info.append(nm, lm);
+      }
       const chev = document.createElement("span");
       chev.className = "chev";
       chev.textContent = "›";
@@ -612,6 +660,7 @@
     $("nameInput").value = card ? card.name : "";
     $("limitInput").value = card ? card.limit.toLocaleString("ko-KR") : "";
     $("startInput").value = card ? String(card.startDay ?? 1) : "1";
+    $("expiryInput").value = card ? (card.expiry || "") : "";
     showPeriodNote();
     $("delBtn").style.display = card && cards.length > 1 ? "block" : "none";
     $("editNote").textContent = card
@@ -665,6 +714,7 @@
     const name = $("nameInput").value.trim();
     const limit = Number(digits($("limitInput").value));
     const startDay = Math.min(Math.max(Number($("startInput").value) || 0, 0), MAX_START_DAY);
+    const expiry = $("expiryInput").value || "";
     if (!name) { alert("카드 별명을 입력해 주세요."); return; }
     if (!limit) { alert(startDay === 0 ? "충전 금액을 입력해 주세요." : "한도를 입력해 주세요."); return; }
 
@@ -673,9 +723,10 @@
       card.name = name;
       card.limit = limit;
       card.startDay = startDay;
+      card.expiry = expiry;
     } else {
       const id = "c" + Date.now();
-      cards.push({ id, name, limit, startDay });
+      cards.push({ id, name, limit, startDay, expiry });
       selected = id;
       try { localStorage.setItem(SEL_KEY, selected); } catch {}
     }
