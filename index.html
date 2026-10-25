@@ -24,6 +24,7 @@
     --orange: #ff9500;
     --red: #ff3b30;
     --track: #e5e5ea;
+    --field: #f2f2f7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -37,18 +38,43 @@
       --orange: #ff9f0a;
       --red: #ff453a;
       --track: #3a3a3c;
+      --field: #2c2c2e;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--text); }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
-    padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px);
+    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 24px);
     max-width: 480px;
     margin: 0 auto;
     font-variant-numeric: tabular-nums;
   }
-  .month { text-align: center; font-size: 17px; font-weight: 600; color: var(--sub); margin: 4px 0 14px; }
+
+  /* 카드 선택 줄 */
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .picker {
+    flex: 1; min-width: 0; position: relative;
+    background: var(--card); border-radius: 12px;
+    display: flex; align-items: center; padding: 0 12px;
+  }
+  .picker select {
+    appearance: none; -webkit-appearance: none;
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 17px; font-weight: 600; padding: 11px 20px 11px 0;
+    text-overflow: ellipsis;
+  }
+  .picker::after {
+    content: ""; position: absolute; right: 14px; pointer-events: none;
+    width: 7px; height: 7px; border-right: 2px solid var(--sub); border-bottom: 2px solid var(--sub);
+    transform: translateY(-2px) rotate(45deg);
+  }
+  .gear {
+    border: 0; background: var(--card); color: var(--sub);
+    width: 44px; height: 44px; border-radius: 12px; font-size: 20px;
+  }
+  .month { text-align: center; font-size: 15px; font-weight: 600; color: var(--sub); margin-bottom: 12px; }
+
   .card { background: var(--card); border-radius: 20px; padding: 22px 20px; }
   .label { font-size: 15px; color: var(--sub); }
   .big { font-size: 44px; font-weight: 700; letter-spacing: -1px; margin-top: 2px; line-height: 1.15; }
@@ -58,7 +84,7 @@
   .fill { height: 100%; width: 0; border-radius: 5px; background: var(--green); transition: width .3s, background .3s; }
   .hint { font-size: 13px; color: var(--sub); margin-top: 10px; }
 
-  form { margin-top: 16px; display: flex; gap: 10px; }
+  form.add { margin-top: 16px; display: flex; gap: 10px; }
   .amount {
     flex: 1; min-width: 0; display: flex; align-items: center;
     background: var(--card); border-radius: 14px; padding: 0 16px;
@@ -68,11 +94,11 @@
     font: inherit; font-size: 24px; font-weight: 600; padding: 14px 0; text-align: right;
   }
   .amount span { font-size: 20px; color: var(--sub); margin-left: 6px; }
-  button.add {
+  button.go {
     border: 0; border-radius: 14px; background: var(--blue); color: #fff;
     font: inherit; font-size: 18px; font-weight: 600; padding: 0 22px;
   }
-  button.add:disabled { opacity: .4; }
+  button.go:disabled { opacity: .4; }
 
   h2 { font-size: 13px; font-weight: 400; color: var(--sub); margin: 28px 4px 8px; }
   ul { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: 14px; overflow: hidden; }
@@ -80,7 +106,7 @@
   li:first-child { border-top: 0; }
   li .when { color: var(--sub); font-size: 15px; flex: 1; }
   li .won { font-size: 17px; font-weight: 600; }
-  li button {
+  li .x {
     border: 0; background: transparent; color: var(--sub); font-size: 20px;
     width: 40px; height: 32px; margin-left: 4px;
   }
@@ -88,16 +114,62 @@
 
   .toast {
     position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px);
-    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 30;
     background: rgba(40,40,40,.95); color: #fff; border-radius: 12px;
     padding: 10px 8px 10px 16px; display: flex; align-items: center; gap: 8px;
     font-size: 15px; white-space: nowrap; transition: opacity .2s, transform .2s;
   }
   .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
   .toast button { border: 0; background: transparent; color: #64d2ff; font: inherit; font-weight: 600; padding: 4px 8px; }
+
+  /* 카드 관리 화면 */
+  .sheet {
+    position: fixed; inset: 0; z-index: 20; background: var(--bg);
+    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 24px);
+    overflow-y: auto; display: none;
+  }
+  .sheet.show { display: block; }
+  .sheet > .inner { max-width: 480px; margin: 0 auto; }
+  .sheetbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .sheetbar h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  .sheetbar button { border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 17px; padding: 6px 0; }
+  .cardrow { display: flex; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .cardrow:first-child { border-top: 0; }
+  .cardrow .info { flex: 1; min-width: 0; text-align: left; }
+  .cardrow .nm { font-size: 17px; }
+  .cardrow .lm { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .cardrow .chev { color: var(--sub); font-size: 17px; margin-left: 8px; }
+  button.rowbtn { width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; display: flex; align-items: center; }
+  button.plus {
+    width: 100%; margin-top: 14px; border: 0; border-radius: 14px;
+    background: var(--card); color: var(--blue); font: inherit; font-size: 17px; padding: 15px;
+  }
+  .field { background: var(--card); border-radius: 14px; padding: 0 16px; display: flex; align-items: center; margin-top: 10px; }
+  .field label { font-size: 16px; color: var(--sub); width: 68px; flex: none; }
+  .field input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 17px; padding: 15px 0; text-align: right;
+  }
+  .field .unit { font-size: 16px; color: var(--sub); margin-left: 6px; }
+  button.save {
+    width: 100%; margin-top: 20px; border: 0; border-radius: 14px;
+    background: var(--blue); color: #fff; font: inherit; font-size: 17px; font-weight: 600; padding: 15px;
+  }
+  button.save:disabled { opacity: .4; }
+  button.del {
+    width: 100%; margin-top: 10px; border: 0; border-radius: 14px;
+    background: var(--card); color: var(--red); font: inherit; font-size: 17px; padding: 15px;
+  }
+  .note { font-size: 13px; color: var(--sub); margin: 10px 4px 0; line-height: 1.5; }
 </style>
 </head>
 <body>
+  <div class="top">
+    <div class="picker">
+      <select id="cardSel" aria-label="카드 선택"></select>
+    </div>
+    <button class="gear" id="manageBtn" type="button" aria-label="카드 관리">⚙</button>
+  </div>
   <div class="month" id="month"></div>
 
   <div class="card">
@@ -114,12 +186,12 @@
     <div class="hint" id="hint"></div>
   </div>
 
-  <form id="form" autocomplete="off">
+  <form class="add" id="addForm" autocomplete="off">
     <label class="amount">
       <input id="input" inputmode="numeric" placeholder="사용 금액" aria-label="사용 금액">
       <span>원</span>
     </label>
-    <button class="add" id="addBtn" disabled>추가</button>
+    <button class="go" id="addBtn" disabled>추가</button>
   </form>
 
   <h2 id="listTitle">이번 달 내역</h2>
@@ -130,43 +202,119 @@
     <button id="undoBtn" type="button">취소</button>
   </div>
 
+  <!-- 카드 목록 -->
+  <div class="sheet" id="listSheet">
+    <div class="inner">
+      <div class="sheetbar">
+        <h1>카드 관리</h1>
+        <button type="button" id="listClose">완료</button>
+      </div>
+      <ul id="cardList"></ul>
+      <button class="plus" type="button" id="newCardBtn">+ 카드 추가</button>
+      <p class="note" id="listNote"></p>
+    </div>
+  </div>
+
+  <!-- 카드 편집 -->
+  <div class="sheet" id="editSheet">
+    <div class="inner">
+      <div class="sheetbar">
+        <h1 id="editTitle">카드 추가</h1>
+        <button type="button" id="editClose">취소</button>
+      </div>
+      <form id="editForm" autocomplete="off">
+        <div class="field">
+          <label for="nameInput">별명</label>
+          <input id="nameInput" placeholder="예: 법인카드" maxlength="20">
+        </div>
+        <div class="field">
+          <label for="limitInput">월 한도</label>
+          <input id="limitInput" inputmode="numeric" placeholder="1,000,000">
+          <span class="unit">원</span>
+        </div>
+        <button class="save" id="saveBtn" type="submit">저장</button>
+      </form>
+      <button class="del" type="button" id="delBtn">이 카드 삭제</button>
+      <p class="note" id="editNote"></p>
+    </div>
+  </div>
+
 <script>
-  const LIMIT = 1000000;          // 월 한도 (원)
-  const KEY = "corpcard.entries";  // [{t: 사용시각(ms), a: 금액}]
+  const MAX_CARDS = 5;                    // 카드는 최대 5장
+  const CARDS_KEY = "corpcard.cards";     // [{id, name, limit}]
+  const ENTRIES_KEY = "corpcard.entries"; // [{t: 사용시각(ms), a: 금액, c: 카드id}]
+  const SEL_KEY = "corpcard.selected";
 
   const $ = (id) => document.getElementById(id);
   const won = (n) => n.toLocaleString("ko-KR") + "원";
+  const digits = (s) => s.replace(/\D/g, "");
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  function read(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
+    catch { return fallback; }
   }
-  function save(entries) {
-    try { localStorage.setItem(KEY, JSON.stringify(entries)); } catch {}
+  function write(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
   }
 
-  let entries = load();
+  let cards = read(CARDS_KEY, null);
+  let entries = read(ENTRIES_KEY, []);
+  let selected = (() => { try { return localStorage.getItem(SEL_KEY); } catch { return null; } })();
+
+  // 예전(카드 1장) 기록을 카드별 구조로 옮긴다
+  if (!Array.isArray(cards) || !cards.length) {
+    cards = [{ id: "c1", name: "법인카드", limit: 1000000 }];
+    write(CARDS_KEY, cards);
+  }
+  if (entries.some((e) => !e.c)) {
+    entries = entries.map((e) => (e.c ? e : { ...e, c: cards[0].id }));
+    write(ENTRIES_KEY, entries);
+  }
+  if (!cards.some((c) => c.id === selected)) {
+    selected = cards[0].id;
+    try { localStorage.setItem(SEL_KEY, selected); } catch {}
+  }
+
+  const currentCard = () => cards.find((c) => c.id === selected) || cards[0];
+
   let lastAdded = null;
   let toastTimer = null;
+  let editingId = null; // null이면 새 카드
 
-  function thisMonth(now = new Date()) {
+  function monthEntries(now = new Date()) {
+    const card = currentCard();
     return entries
       .filter((e) => {
+        if (e.c !== card.id) return false;
         const d = new Date(e.t);
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
       })
       .sort((a, b) => b.t - a.t);
   }
 
+  function renderPicker() {
+    const sel = $("cardSel");
+    sel.replaceChildren();
+    for (const c of cards) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      sel.append(opt);
+    }
+    sel.value = selected;
+  }
+
   function render() {
     const now = new Date();
-    const items = thisMonth(now);
+    const card = currentCard();
+    const items = monthEntries(now);
     const used = items.reduce((s, e) => s + e.a, 0);
-    const remain = LIMIT - used;
-    const ratio = used / LIMIT;
+    const remain = card.limit - used;
+    const ratio = card.limit > 0 ? used / card.limit : 0;
 
     $("month").textContent = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
     $("used").textContent = won(used);
-    $("limit").textContent = "한도 " + won(LIMIT);
+    $("limit").textContent = "한도 " + won(card.limit);
     $("remainLabel").textContent = remain >= 0 ? "남은 금액" : "한도 초과";
     $("remain").textContent = won(Math.abs(remain));
 
@@ -201,12 +349,13 @@
       amt.textContent = won(e.a);
       const del = document.createElement("button");
       del.type = "button";
+      del.className = "x";
       del.textContent = "×";
       del.setAttribute("aria-label", `${won(e.a)} 삭제`);
       del.onclick = () => {
         if (!confirm(`${when.textContent} ${won(e.a)} 내역을 삭제할까요?`)) return;
         entries = entries.filter((x) => x !== e);
-        save(entries);
+        write(ENTRIES_KEY, entries);
         render();
       };
       li.append(when, amt, del);
@@ -221,23 +370,27 @@
     toastTimer = setTimeout(() => $("toast").classList.remove("show"), 4000);
   }
 
-  const input = $("input");
-  input.addEventListener("input", () => {
-    const digits = input.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9);
-    input.value = digits ? Number(digits).toLocaleString("ko-KR") : "";
-    $("addBtn").disabled = !digits;
-  });
+  // 금액 입력란에 자동으로 쉼표 넣기
+  function commaInput(el, onChange) {
+    el.addEventListener("input", () => {
+      const d = digits(el.value).replace(/^0+/, "").slice(0, 9);
+      el.value = d ? Number(d).toLocaleString("ko-KR") : "";
+      if (onChange) onChange(d);
+    });
+  }
 
-  $("form").addEventListener("submit", (ev) => {
+  commaInput($("input"), (d) => { $("addBtn").disabled = !d; });
+
+  $("addForm").addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const amount = Number(input.value.replace(/\D/g, ""));
+    const amount = Number(digits($("input").value));
     if (!amount) return;
-    lastAdded = { t: Date.now(), a: amount };
+    lastAdded = { t: Date.now(), a: amount, c: currentCard().id };
     entries.push(lastAdded);
-    save(entries);
-    input.value = "";
+    write(ENTRIES_KEY, entries);
+    $("input").value = "";
     $("addBtn").disabled = true;
-    input.blur();
+    $("input").blur();
     render();
     showToast(`${won(amount)} 추가됨`);
   });
@@ -246,15 +399,139 @@
     if (lastAdded) {
       entries = entries.filter((x) => x !== lastAdded);
       lastAdded = null;
-      save(entries);
+      write(ENTRIES_KEY, entries);
       render();
     }
     $("toast").classList.remove("show");
   });
 
+  $("cardSel").addEventListener("change", (ev) => {
+    selected = ev.target.value;
+    try { localStorage.setItem(SEL_KEY, selected); } catch {}
+    lastAdded = null;
+    $("toast").classList.remove("show");
+    render();
+  });
+
+  // ----- 카드 관리 -----
+
+  function openSheet(id) { $(id).classList.add("show"); }
+  function closeSheet(id) { $(id).classList.remove("show"); }
+
+  function renderCardList() {
+    const list = $("cardList");
+    list.replaceChildren();
+    for (const c of cards) {
+      const used = entries
+        .filter((e) => {
+          const d = new Date(e.t), now = new Date();
+          return e.c === c.id && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+        })
+        .reduce((s, e) => s + e.a, 0);
+      const li = document.createElement("li");
+      li.className = "cardrow";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "rowbtn";
+      const info = document.createElement("span");
+      info.className = "info";
+      const nm = document.createElement("div");
+      nm.className = "nm";
+      nm.textContent = c.name;
+      const lm = document.createElement("div");
+      lm.className = "lm";
+      lm.textContent = `한도 ${won(c.limit)} · 이번 달 ${won(used)}`;
+      info.append(nm, lm);
+      const chev = document.createElement("span");
+      chev.className = "chev";
+      chev.textContent = "›";
+      btn.append(info, chev);
+      btn.onclick = () => openEdit(c.id);
+      li.append(btn);
+      list.append(li);
+    }
+    const full = cards.length >= MAX_CARDS;
+    $("newCardBtn").style.display = full ? "none" : "block";
+    $("listNote").textContent = full
+      ? `카드는 최대 ${MAX_CARDS}장까지 등록할 수 있어요. 더 넣으려면 안 쓰는 카드를 삭제해 주세요.`
+      : `카드마다 한도와 사용 내역이 따로 관리돼요. (${cards.length}/${MAX_CARDS}장)`;
+  }
+
+  function openEdit(id) {
+    if (!id && cards.length >= MAX_CARDS) {
+      alert(`카드는 최대 ${MAX_CARDS}장까지 등록할 수 있어요.`);
+      return;
+    }
+    editingId = id;
+    const card = id ? cards.find((c) => c.id === id) : null;
+    $("editTitle").textContent = card ? "카드 수정" : "카드 추가";
+    $("nameInput").value = card ? card.name : "";
+    $("limitInput").value = card ? card.limit.toLocaleString("ko-KR") : "";
+    $("delBtn").style.display = card && cards.length > 1 ? "block" : "none";
+    $("editNote").textContent = card
+      ? "한도를 바꿔도 이미 기록한 사용 내역은 그대로예요."
+      : "별명은 나중에 바꿀 수 있어요.";
+    openSheet("editSheet");
+    if (!card) $("nameInput").focus();
+  }
+
+  commaInput($("limitInput"));
+
+  $("editForm").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const name = $("nameInput").value.trim();
+    const limit = Number(digits($("limitInput").value));
+    if (!name) { alert("카드 별명을 입력해 주세요."); return; }
+    if (!limit) { alert("월 한도를 입력해 주세요."); return; }
+
+    if (editingId) {
+      const card = cards.find((c) => c.id === editingId);
+      card.name = name;
+      card.limit = limit;
+    } else {
+      const id = "c" + Date.now();
+      cards.push({ id, name, limit });
+      selected = id;
+      try { localStorage.setItem(SEL_KEY, selected); } catch {}
+    }
+    write(CARDS_KEY, cards);
+    closeSheet("editSheet");
+    renderPicker();
+    renderCardList();
+    render();
+  });
+
+  $("delBtn").addEventListener("click", () => {
+    const card = cards.find((c) => c.id === editingId);
+    if (!card) return;
+    const count = entries.filter((e) => e.c === card.id).length;
+    const msg = count
+      ? `"${card.name}" 카드와 사용 내역 ${count}건을 모두 삭제할까요?\n되돌릴 수 없어요.`
+      : `"${card.name}" 카드를 삭제할까요?`;
+    if (!confirm(msg)) return;
+    cards = cards.filter((c) => c.id !== card.id);
+    entries = entries.filter((e) => e.c !== card.id);
+    write(CARDS_KEY, cards);
+    write(ENTRIES_KEY, entries);
+    if (selected === card.id) {
+      selected = cards[0].id;
+      try { localStorage.setItem(SEL_KEY, selected); } catch {}
+    }
+    closeSheet("editSheet");
+    renderPicker();
+    renderCardList();
+    render();
+  });
+
+  $("manageBtn").addEventListener("click", () => { renderCardList(); openSheet("listSheet"); });
+  $("listClose").addEventListener("click", () => closeSheet("listSheet"));
+  $("newCardBtn").addEventListener("click", () => openEdit(null));
+  $("editClose").addEventListener("click", () => closeSheet("editSheet"));
+
   // 앱을 켜둔 채로 달이 바뀌거나, 다시 열었을 때 화면 갱신
   document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
 
+  renderPicker();
   render();
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
