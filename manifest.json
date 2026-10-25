@@ -1,6 +1,6 @@
 {
-  "name": "법카 한도",
-  "short_name": "법카 한도",
+  "name": "노트",
+  "short_name": "노트",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

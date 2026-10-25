@@ -3,15 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>법카 한도</title>
+<title>노트</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="법카 한도">
+<meta name="apple-mobile-web-app-title" content="노트">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
+<script>
+  // 잠금이 켜져 있으면 화면이 그려지기 전에 가린다 (내용이 잠깐 비치는 걸 막음)
+  try { if (localStorage.getItem("corpcard.lock")) document.documentElement.classList.add("locked"); } catch {}
+</script>
 <style>
   :root {
     --bg: #f2f2f7;
@@ -161,9 +165,50 @@
     background: var(--card); color: var(--red); font: inherit; font-size: 17px; padding: 15px;
   }
   .note { font-size: 13px; color: var(--sub); margin: 10px 4px 0; line-height: 1.5; }
+
+  /* 설정 안 작은 구역 */
+  .sect { font-size: 13px; color: var(--sub); margin: 26px 4px 8px; }
+  .toggle { display: flex; align-items: center; background: var(--card); border-radius: 14px; padding: 14px 16px; }
+  .toggle .tl { flex: 1; min-width: 0; font-size: 17px; }
+  .toggle input { width: 51px; height: 31px; margin: 0; flex: none; }
+  .danger { color: var(--red); }
+
+  /* 잠금 화면 */
+  html.locked .app { display: none; }
+  #lockScreen { display: none; }
+  html.locked #lockScreen {
+    display: flex; position: fixed; inset: 0; z-index: 50; background: var(--bg);
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px calc(env(safe-area-inset-left) + 24px);
+  }
+  #lockScreen .mark { font-size: 54px; line-height: 1; margin-bottom: 18px; }
+  #lockScreen h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  #lockScreen p { font-size: 14px; color: var(--sub); margin: 0 0 26px; text-align: center; line-height: 1.5; }
+  #lockScreen .unlock {
+    border: 0; border-radius: 14px; background: var(--blue); color: #fff;
+    font: inherit; font-size: 17px; font-weight: 600; padding: 15px 36px;
+  }
+  #lockScreen .alt { border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 15px; padding: 14px; margin-top: 6px; }
+  #pinPad { width: 100%; max-width: 260px; display: none; }
+  #pinPad input {
+    width: 100%; border: 0; outline: 0; border-radius: 14px; background: var(--card); color: var(--text);
+    font: inherit; font-size: 28px; font-weight: 600; letter-spacing: 10px; text-align: center; padding: 16px;
+  }
 </style>
 </head>
 <body>
+  <div id="lockScreen">
+    <div class="mark">▤</div>
+    <h1>노트</h1>
+    <p id="lockMsg">Face ID로 잠금을 풀어 주세요</p>
+    <button class="unlock" id="unlockBtn" type="button">잠금 해제</button>
+    <form id="pinPad" autocomplete="off">
+      <input id="pinInput" inputmode="numeric" maxlength="6" placeholder="••••" aria-label="비밀번호">
+    </form>
+    <button class="alt" id="altBtn" type="button">비밀번호로 열기</button>
+  </div>
+
+  <div class="app">
   <div class="top">
     <div class="picker">
       <select id="cardSel" aria-label="카드 선택"></select>
@@ -196,6 +241,7 @@
 
   <h2 id="listTitle">이번 달 내역</h2>
   <ul id="list"></ul>
+  </div><!-- /.app -->
 
   <div class="toast" id="toast" role="status">
     <span id="toastText"></span>
@@ -206,12 +252,33 @@
   <div class="sheet" id="listSheet">
     <div class="inner">
       <div class="sheetbar">
-        <h1>카드 관리</h1>
+        <h1>설정</h1>
         <button type="button" id="listClose">완료</button>
       </div>
+
+      <div class="sect">카드</div>
       <ul id="cardList"></ul>
       <button class="plus" type="button" id="newCardBtn">+ 카드 추가</button>
       <p class="note" id="listNote"></p>
+
+      <div class="sect">잠금</div>
+      <div class="toggle">
+        <span class="tl" id="lockLabel">Face ID로 잠그기</span>
+        <input type="checkbox" id="lockToggle" aria-label="잠금 사용">
+      </div>
+      <p class="note" id="lockNote"></p>
+
+      <div class="sect">기록 보관</div>
+      <div class="toggle">
+        <span class="tl">3개월 지나면 자동 삭제</span>
+        <input type="checkbox" id="purgeToggle" aria-label="오래된 기록 자동 삭제">
+      </div>
+      <p class="note">
+        기록은 <b>이 아이폰 안에만</b> 저장돼요. 서버로 보내지 않고, 다른 사람은 볼 수 없어요.
+        그래서 백업도 없어요 — 앱을 지우면 기록도 함께 사라져요.
+      </p>
+
+      <button class="del" type="button" id="wipeBtn">기록 전부 삭제</button>
     </div>
   </div>
 
@@ -241,9 +308,13 @@
 
 <script>
   const MAX_CARDS = 5;                    // 카드는 최대 5장
+  const KEEP_MONTHS = 3;                  // 자동 삭제까지 보관할 개월 수
+  const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
   const CARDS_KEY = "corpcard.cards";     // [{id, name, limit}]
   const ENTRIES_KEY = "corpcard.entries"; // [{t: 사용시각(ms), a: 금액, c: 카드id}]
   const SEL_KEY = "corpcard.selected";
+  const LOCK_KEY = "corpcard.lock";       // {kind:"faceid", id} 또는 {kind:"pin", salt, hash}
+  const PURGE_KEY = "corpcard.purge";     // "off"면 자동 삭제 안 함
 
   const $ = (id) => document.getElementById(id);
   const won = (n) => n.toLocaleString("ko-KR") + "원";
@@ -274,6 +345,19 @@
     selected = cards[0].id;
     try { localStorage.setItem(SEL_KEY, selected); } catch {}
   }
+
+  // 오래된 기록 자동 삭제
+  function purgeOld() {
+    if (localStorage.getItem(PURGE_KEY) === "off") return;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - KEEP_MONTHS);
+    const kept = entries.filter((e) => e.t >= cutoff.getTime());
+    if (kept.length !== entries.length) {
+      entries = kept;
+      write(ENTRIES_KEY, entries);
+    }
+  }
+  purgeOld();
 
   const currentCard = () => cards.find((c) => c.id === selected) || cards[0];
 
@@ -523,16 +607,206 @@
     render();
   });
 
-  $("manageBtn").addEventListener("click", () => { renderCardList(); openSheet("listSheet"); });
+  $("manageBtn").addEventListener("click", () => { renderCardList(); renderLockSetting(); openSheet("listSheet"); });
   $("listClose").addEventListener("click", () => closeSheet("listSheet"));
   $("newCardBtn").addEventListener("click", () => openEdit(null));
   $("editClose").addEventListener("click", () => closeSheet("editSheet"));
 
+  // ----- 잠금 -----
+  // 화면을 가리는 자물쇠일 뿐, 기록 자체를 암호로 바꾸지는 않는다.
+  // 아이폰 자체 잠금 위에 한 겹 더 두는 용도.
+
+  const lockInfo = () => read(LOCK_KEY, null);
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
+
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return b64(buf);
+  }
+
+  const canFaceId = () =>
+    !!(window.PublicKeyCredential && navigator.credentials && location.protocol === "https:");
+
+  async function registerFaceId() {
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: rand(32),
+        rp: { name: "노트" },
+        user: { id: rand(16), name: "me", displayName: "나" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          residentKey: "preferred",
+        },
+        timeout: 60000,
+      },
+    });
+    if (!cred) throw new Error("no credential");
+    return b64(cred.rawId);
+  }
+
+  async function verifyFaceId(id) {
+    const cred = await navigator.credentials.get({
+      publicKey: {
+        challenge: rand(32),
+        allowCredentials: [{ type: "public-key", id: unb64(id) }],
+        userVerification: "required",
+        timeout: 60000,
+      },
+    });
+    return !!cred;
+  }
+
+  let unlocked = !lockInfo();
+  let hiddenAt = 0;
+
+  function lockNow() {
+    const info = lockInfo();
+    if (!info) return;
+    unlocked = false;
+    document.documentElement.classList.add("locked");
+    $("pinPad").style.display = "none";
+    $("unlockBtn").style.display = "block";
+    $("altBtn").style.display = info.kind === "faceid" ? "block" : "none";
+    $("lockMsg").textContent = info.kind === "faceid"
+      ? "Face ID로 잠금을 풀어 주세요"
+      : "비밀번호를 입력해 주세요";
+    if (info.kind === "pin") showPinPad();
+  }
+
+  function unlockDone() {
+    unlocked = true;
+    hiddenAt = 0;
+    document.documentElement.classList.remove("locked");
+    $("pinInput").value = "";
+    render();
+  }
+
+  function showPinPad() {
+    $("pinPad").style.display = "block";
+    $("unlockBtn").style.display = "none";
+    $("altBtn").style.display = "none";
+    $("lockMsg").textContent = "비밀번호를 입력해 주세요";
+    setTimeout(() => $("pinInput").focus(), 50);
+  }
+
+  async function tryUnlock() {
+    const info = lockInfo();
+    if (!info) return unlockDone();
+    if (info.kind === "faceid") {
+      try {
+        if (await verifyFaceId(info.id)) unlockDone();
+      } catch {
+        $("lockMsg").textContent = "잠금을 풀지 못했어요. 다시 시도해 주세요.";
+      }
+    } else {
+      showPinPad();
+    }
+  }
+
+  $("unlockBtn").addEventListener("click", tryUnlock);
+  $("altBtn").addEventListener("click", showPinPad);
+
+  $("pinPad").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const info = lockInfo();
+    if (!info || info.kind !== "pin") return;
+    const pin = digits($("pinInput").value);
+    if (!pin) return;
+    if (await sha256(info.salt + pin) === info.hash) {
+      unlockDone();
+    } else {
+      $("pinInput").value = "";
+      $("lockMsg").textContent = "비밀번호가 맞지 않아요.";
+    }
+  });
+
+  async function enableLock() {
+    if (canFaceId()) {
+      try {
+        const id = await registerFaceId();
+        write(LOCK_KEY, { kind: "faceid", id });
+        return true;
+      } catch {
+        // Face ID를 못 쓰면 비밀번호로 넘어간다
+      }
+    }
+    const pin = prompt("앱을 열 때 쓸 숫자 비밀번호를 정해 주세요 (4~6자리)");
+    if (pin === null) return false;
+    const only = digits(pin);
+    if (only.length < 4) { alert("숫자 4자리 이상으로 정해 주세요."); return false; }
+    const again = prompt("한 번 더 입력해 주세요");
+    if (digits(again || "") !== only) { alert("두 번 입력한 값이 달라요."); return false; }
+    const salt = b64(rand(16));
+    write(LOCK_KEY, { kind: "pin", salt, hash: await sha256(salt + only) });
+    return true;
+  }
+
+  function renderLockSetting() {
+    const info = lockInfo();
+    $("lockToggle").checked = !!info;
+    $("lockLabel").textContent = info && info.kind === "pin"
+      ? "비밀번호로 잠그기"
+      : canFaceId() ? "Face ID로 잠그기" : "비밀번호로 잠그기";
+    $("lockNote").textContent = info
+      ? "앱을 열 때마다 잠금을 풀어야 해요. 화면을 가려 주는 기능이라, 아이폰 잠금 위에 한 겹 더 두는 정도예요."
+      : "켜면 앱을 열 때 Face ID나 비밀번호를 물어봐요. 남이 폰을 집어 들어도 내역이 바로 보이지 않아요.";
+    $("purgeToggle").checked = localStorage.getItem(PURGE_KEY) !== "off";
+  }
+
+  $("lockToggle").addEventListener("change", async (ev) => {
+    if (ev.target.checked) {
+      const ok = await enableLock();
+      if (!ok) ev.target.checked = false;
+    } else {
+      if (confirm("잠금을 끌까요? 앱을 열 때 아무것도 묻지 않게 돼요.")) {
+        try { localStorage.removeItem(LOCK_KEY); } catch {}
+        unlocked = true;
+      } else {
+        ev.target.checked = true;
+      }
+    }
+    renderLockSetting();
+  });
+
+  $("purgeToggle").addEventListener("change", (ev) => {
+    try { localStorage.setItem(PURGE_KEY, ev.target.checked ? "on" : "off"); } catch {}
+    if (ev.target.checked) { purgeOld(); render(); }
+    renderLockSetting();
+  });
+
+  $("wipeBtn").addEventListener("click", () => {
+    if (!confirm("기록을 전부 지울까요?\n카드 설정은 남고 사용 내역만 사라져요. 되돌릴 수 없어요.")) return;
+    entries = [];
+    write(ENTRIES_KEY, entries);
+    lastAdded = null;
+    closeSheet("listSheet");
+    render();
+  });
+
   // 앱을 켜둔 채로 달이 바뀌거나, 다시 열었을 때 화면 갱신
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (lockInfo() && unlocked && hiddenAt && Date.now() - hiddenAt > RELOCK_MS) {
+      closeSheet("listSheet");
+      closeSheet("editSheet");
+      lockNow();
+      return;
+    }
+    purgeOld();
+    render();
+  });
 
   renderPicker();
+  renderLockSetting();
   render();
+  if (lockInfo()) { lockNow(); tryUnlock(); }
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
