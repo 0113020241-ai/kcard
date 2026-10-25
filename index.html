@@ -275,7 +275,7 @@
 
       <div class="sect">기록 보관</div>
       <div class="toggle">
-        <span class="tl">3개월 지나면 자동 삭제</span>
+        <span class="tl" id="purgeLabel">자동 삭제</span>
         <input type="checkbox" id="purgeToggle" aria-label="오래된 기록 자동 삭제">
       </div>
       <p class="note">
@@ -320,9 +320,9 @@
 
 <script>
   const MAX_CARDS = 5;                    // 카드는 최대 5장
-  const APP_VERSION = "v6";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
+  const APP_VERSION = "v7";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
   const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
-  const KEEP_MONTHS = 3;                  // 자동 삭제까지 보관할 개월 수
+  const KEEP_MONTHS = 2;                  // 자동 삭제까지 보관할 개월 수
   const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
   const CARDS_KEY = "corpcard.cards";     // [{id, name, limit}]
   const ENTRIES_KEY = "corpcard.entries"; // [{t: 사용시각(ms), a: 금액, c: 카드id}]
@@ -819,6 +819,7 @@
       ? "앱을 열 때마다 잠금을 풀어야 해요. 화면을 가려 주는 기능이라, 휴대폰 잠금 위에 한 겹 더 두는 정도예요."
       : `켜면 앱을 열 때 ${BIO_OR} 비밀번호를 물어봐요. 남이 폰을 집어 들어도 내역이 바로 보이지 않아요.`;
     $("purgeToggle").checked = localStorage.getItem(PURGE_KEY) !== "off";
+    $("purgeLabel").textContent = `${KEEP_MONTHS}개월 지나면 자동 삭제`;
     $("verNote").textContent = `버전 ${APP_VERSION}`;
   }
 
