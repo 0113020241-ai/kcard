@@ -157,6 +157,12 @@
     font: inherit; font-size: 17px; padding: 15px 0; text-align: right;
   }
   .field .unit { font-size: 16px; color: var(--sub); margin-left: 6px; }
+  .field select {
+    appearance: none; -webkit-appearance: none; flex: 1; min-width: 0;
+    border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 17px; padding: 15px 16px 15px 0; text-align: right;
+    text-align-last: right; direction: rtl;
+  }
   button.save {
     width: 100%; margin-top: 20px; border: 0; border-radius: 14px;
     background: var(--blue); color: #fff; font: inherit; font-size: 17px; font-weight: 600; padding: 15px;
@@ -236,6 +242,8 @@
     <div class="hint" id="hint"></div>
   </div>
 
+  <button class="del" type="button" id="doneBtn" style="display:none">다 썼어요 · 이 카드 지우기</button>
+
   <form class="add" id="addForm" autocomplete="off">
     <label class="amount">
       <input id="input" inputmode="numeric" placeholder="사용 금액" aria-label="사용 금액">
@@ -301,14 +309,13 @@
           <input id="nameInput" placeholder="예: 법인카드" maxlength="20">
         </div>
         <div class="field">
-          <label for="limitInput">한도</label>
+          <label for="limitInput" id="limitLabel">한도</label>
           <input id="limitInput" inputmode="numeric" placeholder="1,000,000">
           <span class="unit">원</span>
         </div>
         <div class="field">
-          <label for="startInput">시작일</label>
-          <input id="startInput" inputmode="numeric" placeholder="1" maxlength="2">
-          <span class="unit">일</span>
+          <label for="startInput">집계</label>
+          <select id="startInput"></select>
         </div>
         <p class="note" id="periodNote"></p>
         <button class="save" id="saveBtn" type="submit">저장</button>
@@ -320,7 +327,7 @@
 
 <script>
   const MAX_CARDS = 5;                    // 카드는 최대 5장
-  const APP_VERSION = "v7";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
+  const APP_VERSION = "v8";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
   const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
   const KEEP_MONTHS = 2;                  // 자동 삭제까지 보관할 개월 수
   const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
@@ -360,18 +367,21 @@
     try { localStorage.setItem(SEL_KEY, selected); } catch {}
   }
 
-  // 예전 카드에는 집계 시작일이 없으니 1일로 채운다
-  if (cards.some((c) => !c.startDay)) {
-    cards = cards.map((c) => (c.startDay ? c : { ...c, startDay: 1 }));
+  // 예전 카드에는 집계 시작일이 없으니 1일로 채운다 (0 = 기간 없음, 선불카드)
+  if (cards.some((c) => c.startDay === undefined)) {
+    cards = cards.map((c) => (c.startDay === undefined ? { ...c, startDay: 1 } : c));
     write(CARDS_KEY, cards);
   }
+
+  const isPrepaid = (card) => card.startDay === 0;
 
   // 오래된 기록 자동 삭제
   function purgeOld() {
     if (localStorage.getItem(PURGE_KEY) === "off") return;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - KEEP_MONTHS);
-    const kept = entries.filter((e) => e.t >= cutoff.getTime());
+    const prepaidIds = new Set(cards.filter(isPrepaid).map((c) => c.id));
+    const kept = entries.filter((e) => e.t >= cutoff.getTime() || prepaidIds.has(e.c));
     if (kept.length !== entries.length) {
       entries = kept;
       write(ENTRIES_KEY, entries);
@@ -397,15 +407,18 @@
   }
 
   function periodEntries(card, now = new Date()) {
+    const mine = entries.filter((e) => e.c === card.id);
+    if (isPrepaid(card)) return mine.sort((a, b) => b.t - a.t);   // 선불카드는 전체 기간
     const { start, end } = periodOf(card, now);
-    return entries
-      .filter((e) => e.c === card.id && e.t >= start.getTime() && e.t < end.getTime())
+    return mine
+      .filter((e) => e.t >= start.getTime() && e.t < end.getTime())
       .sort((a, b) => b.t - a.t);
   }
 
   const md = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
 
   function periodLabel(card, now = new Date()) {
+    if (isPrepaid(card)) return "선불카드";
     const { start, end, startDay } = periodOf(card, now);
     if (startDay === 1) return `${start.getFullYear()}년 ${start.getMonth() + 1}월`;
     const last = new Date(end.getTime() - 86400000);  // 마지막 날
@@ -432,10 +445,11 @@
     const remain = card.limit - used;
     const ratio = card.limit > 0 ? used / card.limit : 0;
 
+    const prepaid = isPrepaid(card);
     $("month").textContent = periodLabel(card, now);
     $("used").textContent = won(used);
-    $("limit").textContent = "한도 " + won(card.limit);
-    $("remainLabel").textContent = remain >= 0 ? "남은 금액" : "한도 초과";
+    $("limit").textContent = (prepaid ? "충전 " : "한도 ") + won(card.limit);
+    $("remainLabel").textContent = remain >= 0 ? "남은 금액" : (prepaid ? "초과 사용" : "한도 초과");
     $("remain").textContent = won(Math.abs(remain));
 
     const color = ratio < 0.7 ? "var(--green)" : ratio < 0.9 ? "var(--orange)" : "var(--red)";
@@ -443,16 +457,25 @@
     $("fill").style.width = Math.min(ratio, 1) * 100 + "%";
     $("fill").style.background = color;
 
-    const { end, startDay } = periodOf(card, now);
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const daysLeft = Math.max(Math.round((end - today) / 86400000), 1);
-    const lastDate = new Date(end.getTime() - 86400000);
-    $("daysLeft").textContent = daysLeft === 1 ? "오늘이 마지막 날" : `${daysLeft}일 남음`;
-    $("hint").textContent = remain > 0
-      ? `${startDay === 1 ? "말일" : md(lastDate)}까지 · 하루 평균 ${won(Math.floor(remain / daysLeft))}`
-      : remain === 0 ? "한도를 모두 사용했어요" : "";
+    if (prepaid) {
+      // 선불카드는 마감일이 없으니 남은 날짜·하루 평균을 숨긴다
+      $("daysLeft").textContent = "";
+      $("hint").textContent = remain > 0 ? "" : "잔액을 다 썼어요";
+    } else {
+      const { end, startDay } = periodOf(card, now);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const daysLeft = Math.max(Math.round((end - today) / 86400000), 1);
+      const lastDate = new Date(end.getTime() - 86400000);
+      $("daysLeft").textContent = daysLeft === 1 ? "오늘이 마지막 날" : `${daysLeft}일 남음`;
+      $("hint").textContent = remain > 0
+        ? `${startDay === 1 ? "말일" : md(lastDate)}까지 · 하루 평균 ${won(Math.floor(remain / daysLeft))}`
+        : remain === 0 ? "한도를 모두 사용했어요" : "";
+    }
 
-    const title = startDay === 1 ? "이번 달 내역" : "이번 기간 내역";
+    // 다 쓴 선불카드는 정리할 수 있게 버튼을 띄운다
+    $("doneBtn").style.display = prepaid && remain <= 0 ? "block" : "none";
+
+    const title = prepaid ? "사용 내역" : card.startDay === 1 ? "이번 달 내역" : "이번 기간 내역";
     $("listTitle").textContent = items.length ? `${title} ${items.length}건` : title;
     const list = $("list");
     list.replaceChildren();
@@ -559,7 +582,9 @@
       nm.textContent = c.name;
       const lm = document.createElement("div");
       lm.className = "lm";
-      lm.textContent = `한도 ${won(c.limit)} · ${periodLabel(c)} ${won(used)}`;
+      lm.textContent = isPrepaid(c)
+        ? `선불 · 충전 ${won(c.limit)} · 남은 ${won(c.limit - used)}`
+        : `한도 ${won(c.limit)} · ${periodLabel(c)} ${won(used)}`;
       info.append(nm, lm);
       const chev = document.createElement("span");
       chev.className = "chev";
@@ -586,7 +611,7 @@
     $("editTitle").textContent = card ? "카드 수정" : "카드 추가";
     $("nameInput").value = card ? card.name : "";
     $("limitInput").value = card ? card.limit.toLocaleString("ko-KR") : "";
-    $("startInput").value = card ? String(card.startDay || 1) : "1";
+    $("startInput").value = card ? String(card.startDay ?? 1) : "1";
     showPeriodNote();
     $("delBtn").style.display = card && cards.length > 1 ? "block" : "none";
     $("editNote").textContent = card
@@ -596,9 +621,31 @@
     if (!card) $("nameInput").focus();
   }
 
-  // 시작일을 바꾸면 어떤 기간이 되는지 바로 보여준다
+  // 집계 방식 드롭다운 (0 = 기간 없음 = 선불카드)
+  (function fillStartOptions() {
+    const sel = $("startInput");
+    const none = document.createElement("option");
+    none.value = "0";
+    none.textContent = "기간 없음 (선불카드)";
+    sel.append(none);
+    for (let d = 1; d <= MAX_START_DAY; d++) {
+      const o = document.createElement("option");
+      o.value = String(d);
+      o.textContent = d === 1 ? "매월 1일 (기본)" : `매월 ${d}일`;
+      sel.append(o);
+    }
+  })();
+
+  // 집계 방식을 바꾸면 어떤 기간이 되는지 바로 보여준다
   function showPeriodNote() {
-    const day = Number(digits($("startInput").value)) || 1;
+    const day = Number($("startInput").value);
+    if (day === 0) {
+      $("periodNote").textContent =
+        "기간을 나누지 않고 충전액에서 계속 빼요. 선물받은 선불카드·기프트카드에 쓰세요. (오래된 기록도 지우지 않아요)";
+      $("limitLabel").textContent = "충전액";
+      return;
+    }
+    $("limitLabel").textContent = "한도";
     if (day === 1) {
       $("periodNote").textContent = "매월 1일부터 말일까지 합산해요.";
       return;
@@ -611,20 +658,15 @@
 
   commaInput($("limitInput"));
 
-  $("startInput").addEventListener("input", (ev) => {
-    let d = digits(ev.target.value).slice(0, 2);
-    if (d && Number(d) > MAX_START_DAY) d = String(MAX_START_DAY);
-    ev.target.value = d;
-    showPeriodNote();
-  });
+  $("startInput").addEventListener("change", showPeriodNote);
 
   $("editForm").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const name = $("nameInput").value.trim();
     const limit = Number(digits($("limitInput").value));
-    const startDay = Math.min(Math.max(Number(digits($("startInput").value)) || 1, 1), MAX_START_DAY);
+    const startDay = Math.min(Math.max(Number($("startInput").value) || 0, 0), MAX_START_DAY);
     if (!name) { alert("카드 별명을 입력해 주세요."); return; }
-    if (!limit) { alert("한도를 입력해 주세요."); return; }
+    if (!limit) { alert(startDay === 0 ? "충전 금액을 입력해 주세요." : "한도를 입력해 주세요."); return; }
 
     if (editingId) {
       const card = cards.find((c) => c.id === editingId);
@@ -663,6 +705,24 @@
     closeSheet("editSheet");
     renderPicker();
     renderCardList();
+    render();
+  });
+
+  $("doneBtn").addEventListener("click", () => {
+    const card = currentCard();
+    if (!isPrepaid(card) || cards.length < 2) {
+      if (cards.length < 2) { alert("마지막 남은 카드는 지울 수 없어요. 설정에서 다른 카드를 먼저 추가해 주세요."); return; }
+    }
+    if (!confirm(`"${card.name}" 카드를 지울까요?\n사용 내역도 함께 사라지고, 되돌릴 수 없어요.`)) return;
+    cards = cards.filter((c) => c.id !== card.id);
+    entries = entries.filter((e) => e.c !== card.id);
+    write(CARDS_KEY, cards);
+    write(ENTRIES_KEY, entries);
+    selected = cards[0].id;
+    try { localStorage.setItem(SEL_KEY, selected); } catch {}
+    lastAdded = null;
+    $("toast").classList.remove("show");
+    renderPicker();
     render();
   });
 
