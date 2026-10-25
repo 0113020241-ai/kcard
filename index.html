@@ -200,7 +200,7 @@
   <div id="lockScreen">
     <div class="mark">▤</div>
     <h1>노트</h1>
-    <p id="lockMsg">Face ID로 잠금을 풀어 주세요</p>
+    <p id="lockMsg">잠금을 풀어 주세요</p>
     <button class="unlock" id="unlockBtn" type="button">잠금 해제</button>
     <form id="pinPad" autocomplete="off">
       <input id="pinInput" inputmode="numeric" maxlength="6" placeholder="••••" aria-label="비밀번호">
@@ -263,7 +263,7 @@
 
       <div class="sect">잠금</div>
       <div class="toggle">
-        <span class="tl" id="lockLabel">Face ID로 잠그기</span>
+        <span class="tl" id="lockLabel">잠그기</span>
         <input type="checkbox" id="lockToggle" aria-label="잠금 사용">
       </div>
       <p class="note" id="lockNote"></p>
@@ -274,7 +274,7 @@
         <input type="checkbox" id="purgeToggle" aria-label="오래된 기록 자동 삭제">
       </div>
       <p class="note">
-        기록은 <b>이 아이폰 안에만</b> 저장돼요. 서버로 보내지 않고, 다른 사람은 볼 수 없어요.
+        기록은 <b>이 휴대폰 안에만</b> 저장돼요. 서버로 보내지 않고, 다른 사람은 볼 수 없어요.
         그래서 백업도 없어요 — 앱을 지우면 기록도 함께 사라져요.
       </p>
 
@@ -614,7 +614,7 @@
 
   // ----- 잠금 -----
   // 화면을 가리는 자물쇠일 뿐, 기록 자체를 암호로 바꾸지는 않는다.
-  // 아이폰 자체 잠금 위에 한 겹 더 두는 용도.
+  // 휴대폰 자체 잠금 위에 한 겹 더 두는 용도.
 
   const lockInfo = () => read(LOCK_KEY, null);
   const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -625,6 +625,11 @@
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return b64(buf);
   }
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const BIO = isIOS ? "Face ID" : "지문";
+  const BIO_OR = isIOS ? "Face ID나" : "지문이나";   // 한글 조사
 
   const canFaceId = () =>
     !!(window.PublicKeyCredential && navigator.credentials && location.protocol === "https:");
@@ -672,7 +677,7 @@
     $("unlockBtn").style.display = "block";
     $("altBtn").style.display = info.kind === "faceid" ? "block" : "none";
     $("lockMsg").textContent = info.kind === "faceid"
-      ? "Face ID로 잠금을 풀어 주세요"
+      ? `${BIO}로 잠금을 풀어 주세요`
       : "비밀번호를 입력해 주세요";
     if (info.kind === "pin") showPinPad();
   }
@@ -731,7 +736,7 @@
         write(LOCK_KEY, { kind: "faceid", id });
         return true;
       } catch {
-        // Face ID를 못 쓰면 비밀번호로 넘어간다
+        // 생체인증을 못 쓰면 비밀번호로 넘어간다
       }
     }
     const pin = prompt("앱을 열 때 쓸 숫자 비밀번호를 정해 주세요 (4~6자리)");
@@ -750,10 +755,10 @@
     $("lockToggle").checked = !!info;
     $("lockLabel").textContent = info && info.kind === "pin"
       ? "비밀번호로 잠그기"
-      : canFaceId() ? "Face ID로 잠그기" : "비밀번호로 잠그기";
+      : canFaceId() ? `${BIO}로 잠그기` : "비밀번호로 잠그기";
     $("lockNote").textContent = info
-      ? "앱을 열 때마다 잠금을 풀어야 해요. 화면을 가려 주는 기능이라, 아이폰 잠금 위에 한 겹 더 두는 정도예요."
-      : "켜면 앱을 열 때 Face ID나 비밀번호를 물어봐요. 남이 폰을 집어 들어도 내역이 바로 보이지 않아요.";
+      ? "앱을 열 때마다 잠금을 풀어야 해요. 화면을 가려 주는 기능이라, 휴대폰 잠금 위에 한 겹 더 두는 정도예요."
+      : `켜면 앱을 열 때 ${BIO_OR} 비밀번호를 물어봐요. 남이 폰을 집어 들어도 내역이 바로 보이지 않아요.`;
     $("purgeToggle").checked = localStorage.getItem(PURGE_KEY) !== "off";
   }
 
