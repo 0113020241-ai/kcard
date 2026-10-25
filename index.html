@@ -284,6 +284,7 @@
       </p>
 
       <button class="del" type="button" id="wipeBtn">기록 전부 삭제</button>
+      <p class="note" style="text-align:center" id="verNote"></p>
     </div>
   </div>
 
@@ -319,6 +320,7 @@
 
 <script>
   const MAX_CARDS = 5;                    // 카드는 최대 5장
+  const APP_VERSION = "v6";               // 설정 맨 아래에 표시 — 업데이트 됐는지 확인용
   const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
   const KEEP_MONTHS = 3;                  // 자동 삭제까지 보관할 개월 수
   const RELOCK_MS = 60 * 1000;            // 앱을 벗어난 뒤 다시 잠기기까지
@@ -817,6 +819,7 @@
       ? "앱을 열 때마다 잠금을 풀어야 해요. 화면을 가려 주는 기능이라, 휴대폰 잠금 위에 한 겹 더 두는 정도예요."
       : `켜면 앱을 열 때 ${BIO_OR} 비밀번호를 물어봐요. 남이 폰을 집어 들어도 내역이 바로 보이지 않아요.`;
     $("purgeToggle").checked = localStorage.getItem(PURGE_KEY) !== "off";
+    $("verNote").textContent = `버전 ${APP_VERSION}`;
   }
 
   $("lockToggle").addEventListener("change", async (ev) => {
@@ -871,7 +874,24 @@
   if (lockInfo()) { lockNow(); tryUnlock(); }
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+  // 새 버전이 올라오면 앱이 스스로 받아서 새로고침한다.
+  // (예전엔 옛 버전에 갇히면 앱을 지웠다 깔아야 했음)
+  if ("serviceWorker" in navigator) {
+    let reloading = false;
+    const hadController = !!navigator.serviceWorker.controller;  // 첫 설치면 새로고침 불필요
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading || !hadController) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) reg.update().catch(() => {});
+      });
+    }).catch(() => {});
+  }
 </script>
 </body>
 </html>
