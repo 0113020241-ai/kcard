@@ -176,6 +176,12 @@
     width: 100%; margin-top: 10px; border: 0; border-radius: 14px;
     background: var(--card); color: var(--red); font: inherit; font-size: 17px; padding: 15px;
   }
+  #vaultText {
+    width: 100%; min-height: 300px; border: 0; outline: 0; resize: vertical;
+    background: var(--card); color: var(--text); border-radius: 14px; padding: 16px;
+    font: inherit; font-size: 16px; line-height: 1.7;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   .note { font-size: 13px; color: var(--sub); margin: 10px 4px 0; line-height: 1.5; }
 
   /* 설정 안 작은 구역 */
@@ -297,7 +303,41 @@
       </p>
 
       <button class="del" type="button" id="wipeBtn">기록 전부 삭제</button>
+
+      <div class="sect">메모</div>
+      <button class="plus" type="button" id="vaultBtn">🔐 비밀번호 메모 열기</button>
+      <p class="note">암호로 잠긴 메모장이에요. 아이디·비번처럼 외우기 어려운 걸 적어두는 곳이에요.</p>
       <p class="note" style="text-align:center" id="verNote"></p>
+    </div>
+  </div>
+
+  <!-- 비밀번호 메모 -->
+  <div class="sheet" id="vaultSheet">
+    <div class="inner">
+      <div class="sheetbar">
+        <h1>비밀번호 메모</h1>
+        <button type="button" id="vaultClose">완료</button>
+      </div>
+
+      <form id="vaultUnlock" autocomplete="off">
+        <div class="field">
+          <label for="vaultPw">암호</label>
+          <input id="vaultPw" type="password" placeholder="••••••">
+        </div>
+        <div class="field" id="vaultPw2Row">
+          <label for="vaultPw2">확인</label>
+          <input id="vaultPw2" type="password" placeholder="한 번 더">
+        </div>
+        <button class="save" type="submit" id="vaultGo">열기</button>
+        <p class="note" id="vaultNote"></p>
+      </form>
+
+      <div id="vaultBody" style="display:none">
+        <textarea id="vaultText" placeholder="깃허브  아이디  비번&#10;통장  은행  계좌  비번&#10;&#10;줄 바꿔서 마음대로 적으면 돼요"></textarea>
+        <button class="save" type="button" id="vaultSave">저장</button>
+        <p class="note" id="vaultSaved">이 메모는 암호로 잠겨서 저장돼요. <b>암호를 잊으면 아무도 못 열어요.</b></p>
+        <button class="del" type="button" id="vaultWipe">메모 전부 지우기</button>
+      </div>
     </div>
   </div>
 
@@ -339,7 +379,7 @@
   // 설정 맨 아래에 표시된다.
   // APP_VERSION: 기능이 바뀔 때만 올린다 (앞자리=큰 변화, 뒷자리=작은 추가)
   // BUILD_DATE : 올릴 때마다 바꾼다 — 업데이트 됐는지 확인하는 용도
-  const APP_VERSION = "1.3";
+  const APP_VERSION = "1.4";
   const BUILD_DATE = "2026.10.26";
   const MAX_START_DAY = 28;               // 달마다 날짜 수가 달라서 28일까지만
   const KEEP_MONTHS = 2;                  // 자동 삭제까지 보관할 개월 수
@@ -968,6 +1008,122 @@
     render();
   });
 
+
+  // ----- 비밀번호 메모 -----
+  // 적은 내용을 암호로 '진짜' 잠근다(AES-GCM). 열쇠는 어디에도 저장하지 않고,
+  // 암호에서 그때그때 만들어 쓴다. 암호를 잊으면 복구 방법이 없다.
+
+  const VAULT_KEY = "corpcard.vault";   // {salt, iv, data} 전부 base64
+  let vaultKey = null;                  // 열려 있는 동안만 메모리에
+
+  async function deriveKey(pass, salt) {
+    const base = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+  }
+
+  async function vaultSave(text) {
+    const saved = read(VAULT_KEY, null);
+    const iv = rand(12);
+    const buf = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv }, vaultKey, new TextEncoder().encode(text)
+    );
+    write(VAULT_KEY, { salt: saved.salt, iv: b64(iv), data: b64(buf) });
+  }
+
+  async function vaultOpen(pass) {
+    const saved = read(VAULT_KEY, null);
+    const key = await deriveKey(pass, unb64(saved.salt));
+    // 암호가 틀리면 복호화가 실패한다(위조 검사). 그게 곧 비번 확인이다.
+    const buf = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: unb64(saved.iv) }, key, unb64(saved.data)
+    );
+    vaultKey = key;
+    return new TextDecoder().decode(buf);
+  }
+
+  async function vaultCreate(pass) {
+    const salt = rand(16);
+    vaultKey = await deriveKey(pass, salt);
+    const iv = rand(12);
+    const buf = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv }, vaultKey, new TextEncoder().encode("")
+    );
+    write(VAULT_KEY, { salt: b64(salt), iv: b64(iv), data: b64(buf) });
+  }
+
+  function vaultShowUnlock() {
+    const exists = !!read(VAULT_KEY, null);
+    vaultKey = null;
+    $("vaultBody").style.display = "none";
+    $("vaultUnlock").style.display = "block";
+    $("vaultPw").value = "";
+    $("vaultPw2").value = "";
+    $("vaultPw2Row").style.display = exists ? "none" : "flex";
+    $("vaultGo").textContent = exists ? "열기" : "암호 정하기";
+    $("vaultNote").textContent = exists
+      ? "메모를 열려면 암호를 입력해 주세요."
+      : "이 메모를 잠글 암호를 정해 주세요. 앱 잠금과 달라도 돼요. 잊으면 복구할 수 없어요.";
+    $("vaultNote").style.color = "";
+  }
+
+  function vaultShowBody(text) {
+    $("vaultUnlock").style.display = "none";
+    $("vaultBody").style.display = "block";
+    $("vaultText").value = text;
+    $("vaultSaved").innerHTML = "이 메모는 암호로 잠겨서 저장돼요. <b>암호를 잊으면 아무도 못 열어요.</b>";
+  }
+
+  $("vaultBtn").addEventListener("click", () => { vaultShowUnlock(); openSheet("vaultSheet"); });
+
+  $("vaultClose").addEventListener("click", () => {
+    vaultKey = null;                 // 나가면 바로 잠근다
+    $("vaultText").value = "";
+    closeSheet("vaultSheet");
+  });
+
+  $("vaultUnlock").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const pass = $("vaultPw").value;
+    if (!pass) return;
+    const exists = !!read(VAULT_KEY, null);
+    if (!exists) {
+      if (pass.length < 4) { $("vaultNote").textContent = "4자 이상으로 정해 주세요."; return; }
+      if (pass !== $("vaultPw2").value) { $("vaultNote").textContent = "두 번 입력한 암호가 달라요."; return; }
+      await vaultCreate(pass);
+      vaultShowBody("");
+      return;
+    }
+    try {
+      vaultShowBody(await vaultOpen(pass));
+    } catch {
+      $("vaultNote").textContent = "암호가 맞지 않아요.";
+      $("vaultNote").style.color = "var(--red)";
+      $("vaultPw").value = "";
+    }
+  });
+
+  $("vaultSave").addEventListener("click", async () => {
+    if (!vaultKey) return;
+    await vaultSave($("vaultText").value);
+    $("vaultSaved").textContent = "저장했어요 ✓";
+    setTimeout(() => {
+      $("vaultSaved").innerHTML = "이 메모는 암호로 잠겨서 저장돼요. <b>암호를 잊으면 아무도 못 열어요.</b>";
+    }, 2000);
+  });
+
+  $("vaultWipe").addEventListener("click", () => {
+    if (!confirm("메모를 전부 지우고 암호도 없앨까요?\n되돌릴 수 없어요.")) return;
+    try { localStorage.removeItem(VAULT_KEY); } catch {}
+    vaultKey = null;
+    $("vaultText").value = "";
+    closeSheet("vaultSheet");
+  });
+
   // 앱을 켜둔 채로 달이 바뀌거나, 다시 열었을 때 화면 갱신
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
@@ -977,6 +1133,9 @@
     if (lockInfo() && unlocked && hiddenAt && Date.now() - hiddenAt > RELOCK_MS) {
       closeSheet("listSheet");
       closeSheet("editSheet");
+      closeSheet("vaultSheet");
+      vaultKey = null;              // 메모도 같이 잠근다
+      $("vaultText").value = "";
       lockNow();
       return;
     }
